@@ -1,0 +1,253 @@
+*&---------------------------------------------------------------------*
+*& INCLUDE          Functions
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  GUI_DOWNLOAD
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM gui_download_success USING l_filetype TYPE char10
+                        l_codepage TYPE abap_encoding
+                        l_ext .
+
+    DATA: l_tabix TYPE sy-tabix.
+    DATA: l_filename TYPE string.
+    DATA: l_filelength TYPE i.
+    DATA: l_xstring TYPE xstring.
+    DATA: lt_xtab TYPE solix_tab.
+    FIELD-SYMBOLS <fst> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS: <lwa_data> TYPE any.
+    FIELD-SYMBOLS: <l_field>  TYPE any.
+    FIELD-SYMBOLS: <l_value>  TYPE any.
+
+    l_filename = p_files.
+
+    CLEAR: l_filelength, l_xstring, lt_xtab.
+    IF l_ext = 'XLS'.
+        TRY.
+            DATA(xlsx_handling) = cl_ehfnd_xlsx=>get_instance( ).
+            DATA(xlsx_document) = xlsx_handling->create_doc( ).
+            "xlsx_document->add_new_sheet( '12313' ).
+            DATA(xlsx_sheets) = xlsx_document->get_sheets( ).
+*            DATA(first_xlsx_sheet) = xlsx_document->get_sheet_by_id( xlsx_sheets[ 1 ]-sheet_id ).
+*            first_xlsx_sheet->change_sheet_name( '主檔' ).
+
+            CLEAR: l_xstring.
+*            LOOP AT t_main ASSIGNING <lwa_data>.
+*              l_tabix = sy-tabix.
+*              DO .
+*                UNASSIGN <l_value>.
+*                ASSIGN COMPONENT sy-index OF STRUCTURE <lwa_data> TO <l_value>.
+*                IF <l_value> IS NOT ASSIGNED.
+*                  EXIT.
+*                ENDIF.
+*                first_xlsx_sheet->set_cell_content( iv_row = l_tabix iv_column = sy-index iv_value = <l_value> ).
+*              ENDDO.
+*            ENDLOOP.
+*            UNASSIGN: <lwa_data>.
+
+            xlsx_document->add_new_sheet( '成功' ).
+            xlsx_sheets = xlsx_document->get_sheets( ).
+            DATA(second_xlsx_sheet) = xlsx_document->get_sheet_by_id( 2 ).
+
+            LOOP AT t_suc ASSIGNING <lwa_data>.
+                l_tabix = sy-tabix.
+                DO .
+                    UNASSIGN <l_value>.
+                    ASSIGN COMPONENT sy-index OF STRUCTURE <lwa_data> TO <l_value>.
+                    IF <l_value> IS NOT ASSIGNED.
+                        EXIT.
+                    ENDIF.
+                    second_xlsx_sheet->set_cell_content( iv_row = l_tabix iv_column = sy-index iv_value = <l_value> ).
+                ENDDO.
+            ENDLOOP.
+            UNASSIGN: <lwa_data>.
+
+            l_xstring = xlsx_document->save( ).
+
+            CATCH cx_openxml_format INTO DATA(openxml_format_exception).
+                MESSAGE |Error occurs when constructing excel file instance. cx_openxml_format| TYPE 'S'.
+            CATCH cx_openxml_not_found INTO DATA(openxml_not_found_exception).
+                MESSAGE |Error occurs when constructing excel file instance. CX_OPENXML_NOT_FOUND | TYPE 'S'.
+            CATCH cx_openxml_not_allowed INTO DATA(openxml_not_allowed_exception).
+                MESSAGE |Error occurs when constructing excel file instance. CX_OPENXML_NOT_ALLOWED | TYPE 'S'.
+        ENDTRY.
+
+        CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+          EXPORTING
+            buffer        = l_xstring
+*           APPEND_TO_TABLE       = ' '
+          IMPORTING
+            output_length = l_filelength
+          TABLES
+            binary_tab    = lt_xtab.
+    ENDIF.
+
+    UNASSIGN <fst>.
+    ASSIGN lt_xtab[] TO <fst>.
+    CHECK: <fst> IS ASSIGNED.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        bin_filesize            = xstrlen( l_xstring )
+        filename                = l_filename
+        filetype                = l_filetype
+*        write_field_separator   = l_sep
+        codepage                = l_codepage
+      IMPORTING
+        filelength                = l_filelength
+      TABLES
+        data_tab                = <fst>
+      EXCEPTIONS
+        file_write_error        = 1
+        no_batch                = 2
+        gui_refuse_filetransfer = 3
+        invalid_type            = 4
+        no_authority            = 5
+        unknown_error           = 6
+        header_not_allowed      = 7
+        separator_not_allowed   = 8
+        filesize_not_allowed    = 9
+        header_too_long         = 10
+        dp_error_create         = 11
+        dp_error_send           = 12
+        dp_error_write          = 13
+        unknown_dp_error        = 14
+        access_denied           = 15
+        dp_out_of_memory        = 16
+        disk_full               = 17
+        dp_timeout              = 18
+        file_not_found          = 19
+        dataprovider_exception  = 20
+        control_flush_error     = 21
+        OTHERS                  = 22.
+      IF sy-subrc <> 0.
+          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GUI_DOWNLOAD
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM gui_download_error USING l_filetype TYPE char10
+                        l_codepage TYPE abap_encoding
+                        l_ext .
+
+    DATA: l_tabix TYPE sy-tabix.
+    DATA: l_filename TYPE string.
+    DATA: l_filelength TYPE i.
+    DATA: l_xstring TYPE xstring.
+    DATA: lt_xtab TYPE solix_tab.
+    FIELD-SYMBOLS <fst> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS: <lwa_data> TYPE any.
+    FIELD-SYMBOLS: <l_field>  TYPE any.
+    FIELD-SYMBOLS: <l_value>  TYPE any.
+
+    l_filename = p_filef.
+
+    CLEAR: l_filelength, l_xstring, lt_xtab.
+    IF l_ext = 'XLS'.
+        TRY.
+            DATA(xlsx_handling) = cl_ehfnd_xlsx=>get_instance( ).
+            DATA(xlsx_document) = xlsx_handling->create_doc( ).
+            "xlsx_document->add_new_sheet( '12313' ).
+            DATA(xlsx_sheets) = xlsx_document->get_sheets( ).
+*            DATA(first_xlsx_sheet) = xlsx_document->get_sheet_by_id( xlsx_sheets[ 1 ]-sheet_id ).
+*            first_xlsx_sheet->change_sheet_name( '主檔' ).
+
+            CLEAR: l_xstring.
+*            LOOP AT t_main ASSIGNING <lwa_data>.
+*              l_tabix = sy-tabix.
+*              DO .
+*                UNASSIGN <l_value>.
+*                ASSIGN COMPONENT sy-index OF STRUCTURE <lwa_data> TO <l_value>.
+*                IF <l_value> IS NOT ASSIGNED.
+*                  EXIT.
+*                ENDIF.
+*                first_xlsx_sheet->set_cell_content( iv_row = l_tabix iv_column = sy-index iv_value = <l_value> ).
+*              ENDDO.
+*            ENDLOOP.
+*            UNASSIGN: <lwa_data>.
+
+            xlsx_document->add_new_sheet( '錯誤訊息' ).
+            xlsx_sheets = xlsx_document->get_sheets( ).
+            DATA(second_xlsx_sheet) = xlsx_document->get_sheet_by_id( 2 ).
+
+            LOOP AT t_err ASSIGNING <lwa_data>.
+                l_tabix = sy-tabix.
+                DO .
+                    UNASSIGN <l_value>.
+                    ASSIGN COMPONENT sy-index OF STRUCTURE <lwa_data> TO <l_value>.
+                    IF <l_value> IS NOT ASSIGNED.
+                        EXIT.
+                    ENDIF.
+                    second_xlsx_sheet->set_cell_content( iv_row = l_tabix iv_column = sy-index iv_value = <l_value> ).
+                ENDDO.
+            ENDLOOP.
+            UNASSIGN: <lwa_data>.
+
+            l_xstring = xlsx_document->save( ).
+
+            CATCH cx_openxml_format INTO DATA(openxml_format_exception).
+                MESSAGE |Error occurs when constructing excel file instance. cx_openxml_format| TYPE 'S'.
+            CATCH cx_openxml_not_found INTO DATA(openxml_not_found_exception).
+                MESSAGE |Error occurs when constructing excel file instance. CX_OPENXML_NOT_FOUND | TYPE 'S'.
+            CATCH cx_openxml_not_allowed INTO DATA(openxml_not_allowed_exception).
+                MESSAGE |Error occurs when constructing excel file instance. CX_OPENXML_NOT_ALLOWED | TYPE 'S'.
+        ENDTRY.
+
+        CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+          EXPORTING
+            buffer        = l_xstring
+*           APPEND_TO_TABLE       = ' '
+          IMPORTING
+            output_length = l_filelength
+          TABLES
+            binary_tab    = lt_xtab.
+    ENDIF.
+
+    UNASSIGN <fst>.
+    ASSIGN lt_xtab[] TO <fst>.
+    CHECK: <fst> IS ASSIGNED.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        bin_filesize            = xstrlen( l_xstring )
+        filename                = l_filename
+        filetype                = l_filetype
+*        write_field_separator   = l_sep
+        codepage                = l_codepage
+      IMPORTING
+        filelength                = l_filelength
+      TABLES
+        data_tab                = <fst>
+      EXCEPTIONS
+        file_write_error        = 1
+        no_batch                = 2
+        gui_refuse_filetransfer = 3
+        invalid_type            = 4
+        no_authority            = 5
+        unknown_error           = 6
+        header_not_allowed      = 7
+        separator_not_allowed   = 8
+        filesize_not_allowed    = 9
+        header_too_long         = 10
+        dp_error_create         = 11
+        dp_error_send           = 12
+        dp_error_write          = 13
+        unknown_dp_error        = 14
+        access_denied           = 15
+        dp_out_of_memory        = 16
+        disk_full               = 17
+        dp_timeout              = 18
+        file_not_found          = 19
+        dataprovider_exception  = 20
+        control_flush_error     = 21
+        OTHERS                  = 22.
+      IF sy-subrc <> 0.
+          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+ENDFORM.
