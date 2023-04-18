@@ -1,0 +1,125 @@
+*&---------------------------------------------------------------------*
+*& INCLUDE     TOP
+*&---------------------------------------------------------------------*
+TABLES: vbak, vbap.
+
+DATA:
+      w_count TYPE i,
+      l_vbeln(10),
+      w_name(100),
+      BEGIN OF wa_vbeln,
+       vbeln TYPE vbak-vbeln,
+       abgru TYPE vbap-abgru,
+      END OF wa_vbeln,
+      t_vbeln LIKE STANDARD TABLE OF wa_vbeln.
+
+"BAPI
+DATA: wa_head LIKE bapisdhd1,                        "VBAK
+      t_head LIKE STANDARD TABLE OF wa_head,
+      wa_item LIKE bapisditm,                        "VBAP
+      t_item LIKE STANDARD TABLE OF wa_item,
+      wa_par LIKE bapiparnr,                          "PARTNER
+      t_par LIKE STANDARD TABLE OF wa_par,
+      wa_cond LIKE bapicond,
+      t_cond LIKE STANDARD TABLE OF wa_cond,
+      wa_sch LIKE bapischdl,
+      t_sch LIKE STANDARD TABLE OF wa_sch,
+      t_return LIKE STANDARD TABLE OF bapiret2,
+      wa_return LIKE bapiret2.
+
+"Catch TXT Data
+DATA: BEGIN OF wa_tab,
+        line(1000),
+      END OF wa_tab,
+      t_tab LIKE STANDARD TABLE OF wa_tab.
+"Main Data
+DATA: BEGIN OF wa_main,
+        docNumber(20),
+        shipmentDate(8),
+        recog TYPE i,
+      END OF wa_main,
+      t_main LIKE STANDARD TABLE OF wa_main.
+"Detail Data
+DATA: BEGIN OF wa_detail,
+        ean11(14),
+        material TYPE mara-matnr,
+        quantity(27),
+        netpr(20),
+        recog TYPE i,
+      END OF wa_detail,
+      t_detail LIKE STANDARD TABLE OF wa_detail.
+
+"Successful Output
+DATA: BEGIN OF wa_suc,
+        docNumber(14),"客戶單號
+        vbeln(10),"SAP銷售訂單
+      END OF wa_suc,
+      t_suc LIKE STANDARD TABLE OF wa_suc.
+
+"Error Output
+DATA: BEGIN OF wa_err,
+        docNumber(14),
+        shipmentDate(8),
+        ean11(20),
+        message(50),
+      END OF wa_err,
+      t_err LIKE STANDARD TABLE OF wa_err.
+
+
+DATA: BEGIN OF wa_mara,
+        matnr TYPE mara-matnr,
+        ean11 TYPE mara-ean11,
+      END OF wa_mara,
+      t_mara LIKE STANDARD TABLE OF wa_mara.
+
+"check if AUART in the combination with VKORG, VTWEG, SPART
+DATA: wa_tvakz LIKE tvakz,
+      t_tvakz LIKE STANDARD TABLE OF wa_tvakz.
+
+"check if AUART in the combination with VKORG, VTWEG, SPART
+DATA: wa_tvkbz LIKE tvkbz,
+      t_tvkbz LIKE STANDARD TABLE OF wa_tvkbz.
+
+"check if KUNNR in the combination with VKORG, VTWEG, SPART
+DATA: wa_vakpa LIKE vakpa,
+      t_vakpa LIKE STANDARD TABLE OF wa_vakpa.
+
+***********************************************************************
+* Selection Screen / Option / Parameter
+***********************************************************************
+SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT (33) TEXT-p01.
+    PARAMETERS p_auart TYPE vbak-auart OBLIGATORY.
+    SELECTION-SCREEN COMMENT 62(15) TEXT-p02.
+    PARAMETERS p_audat TYPE vbak-audat OBLIGATORY DEFAULT sy-datum.
+SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN SKIP.
+PARAMETERS: p_vkorg TYPE vbak-vkorg OBLIGATORY,
+            p_vtweg TYPE vbak-vtweg OBLIGATORY,
+            p_spart TYPE vbak-spart OBLIGATORY,
+            p_vkbur TYPE vbak-vkbur OBLIGATORY.
+SELECTION-SCREEN SKIP.
+PARAMETERS: p_kunnr TYPE vbak-kunnr OBLIGATORY,
+            p_get TYPE vbak-kunnr OBLIGATORY.
+
+
+SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT (33) TEXT-p03.
+    PARAMETERS p_vstel TYPE vbap-vstel OBLIGATORY DEFAULT 'T101'.
+    SELECTION-SCREEN COMMENT 62(15) TEXT-p04.
+    PARAMETERS p_vsbed TYPE vbak-vsbed OBLIGATORY DEFAULT '11'.
+SELECTION-SCREEN END OF LINE.
+
+
+SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT (33) TEXT-p05.
+    PARAMETERS p_werks TYPE vbap-werks OBLIGATORY DEFAULT 'T11'.
+    SELECTION-SCREEN COMMENT 62(15) TEXT-p06.
+    PARAMETERS p_lgort TYPE vbap-lgort OBLIGATORY DEFAULT 'C1G'.
+SELECTION-SCREEN END OF LINE.
+
+
+
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+PARAMETERS: p_files TYPE rlgrap-filename.
+PARAMETERS: p_filef TYPE rlgrap-filename.
