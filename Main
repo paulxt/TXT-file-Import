@@ -1,0 +1,362 @@
+REPORT Report MESSAGE-ID zsd.
+***********************************************************************
+* Description  : 訂單TXT匯入作業
+***********************************************************************
+INCLUDE zbdcrecx2.
+INCLUDE top.
+INCLUDE f01.
+***********************************************************************
+* INITIALIZATION
+***********************************************************************
+INITIALIZATION.
+***********************************************************************
+*AT SELECTION SCREEN
+***********************************************************************
+AT SELECTION-SCREEN.
+    LOOP AT SCREEN.
+
+        CASE sy-ucomm.
+          WHEN 'ONLI'.
+              PERFORM rm_txt USING p_file w_name.
+              IF p_files IS INITIAL.
+                  CONCATENATE w_name '-OK.xls' INTO p_files.
+                  CONDENSE p_files NO-GAPS.
+              ENDIF.
+              IF p_filef IS INITIAL.
+                  CONCATENATE w_name '-ERROR.xls' INTO p_filef.
+                  CONDENSE p_filef NO-GAPS.
+              ENDIF.
+          WHEN ''.
+              PERFORM rm_txt USING p_file w_name.
+              IF p_files IS INITIAL.
+                  CONCATENATE w_name '-OK.xls' INTO p_files.
+                  CONDENSE p_files NO-GAPS.
+              ENDIF.
+              IF p_filef IS INITIAL.
+                  CONCATENATE w_name '-ERROR.xls' INTO p_filef.
+                  CONDENSE p_filef NO-GAPS.
+              ENDIF.
+        ENDCASE.
+    ENDLOOP.
+
+
+    AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+        PERFORM f4_filename USING p_file.
+    AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_files.
+        PERFORM f4_filename USING p_files.
+
+    AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_filef.
+        PERFORM f4_filename USING p_filef.
+
+***********************************************************************
+* Start-of-selection PAUL
+***********************************************************************
+START-OF-SELECTION.
+
+    "Check authority of VA01
+    CALL FUNCTION 'AUTHORITY_CHECK_TCODE'
+      EXPORTING
+        tcode = 'VA01'
+      EXCEPTIONS
+        ok = 0
+        not_ok = 2
+        OTHERS = 3.
+    IF sy-subrc <> 0.
+        MESSAGE s077(S#) DISPLAY LIKE 'E' WITH 'VA01'.
+        STOP.
+    ENDIF.
+
+
+    "Condition Control 3.
+    SELECT * INTO CORRESPONDING FIELDS OF TABLE t_tvakz FROM tvakz
+      WHERE vkorg = p_vkorg AND vtweg = p_vtweg AND spart = p_spart
+      AND auart = p_auart.
+    IF t_tvakz[] IS INITIAL.
+        MESSAGE s502(v1) DISPLAY LIKE 'E' WITH |<'{ p_vkorg }', '{ p_vtweg }', '{ p_spart }'>| space p_auart.
+        STOP.
+    ENDIF.
+
+    "Condition Control 4.
+    SELECT * INTO CORRESPONDING FIELDS OF TABLE t_tvkbz FROM tvkbz
+      WHERE vkorg = p_vkorg AND vkbur = p_vkbur.
+    IF t_tvkbz[] IS INITIAL.
+        MESSAGE s280(cz) DISPLAY LIKE 'E' WITH p_vkbur p_vkorg.
+        STOP.
+    ENDIF.
+
+    "Condition Control 1.
+    SELECT * INTO CORRESPONDING FIELDS OF TABLE t_vakpa FROM vakpa
+      WHERE vkorg = p_vkorg AND vtweg = p_vtweg AND spart = p_vkorg
+      AND kunde = p_kunnr.
+    IF t_vakpa[] IS INITIAL.
+        MESSAGE s197(vp) DISPLAY LIKE 'E' WITH p_kunnr |<'{ p_vkorg }', '{ p_vtweg }', '{ p_spart }'>|.
+        STOP.
+    ENDIF.
+
+    CLEAR wa_suc.
+    wa_suc-docNumber = TEXT-001.
+    wa_suc-vbeln = TEXT-002.
+    APPEND wa_suc TO t_suc.
+
+    CLEAR wa_err.
+    wa_err-docNumber = TEXT-001.
+    wa_err-shipmentDate = TEXT-003.
+    wa_err-ean11 = TEXT-004.
+    wa_err-message = TEXT-005.
+    APPEND wa_err TO t_err.
+
+    PERFORM read_data.
+***********************************************************************
+* End-of-selection PAUL
+***********************************************************************
+END-OF-SELECTION.
+    IF t_suc[] IS NOT INITIAL.
+        PERFORM gui_download_success USING 'BIN' '65001' 'XLS'.
+    ENDIF.
+
+    IF t_err[] IS NOT INITIAL.
+        PERFORM gui_download_error USING 'BIN' '65001' 'XLS'.
+    ENDIF.
+*&---------------------------------------------------------------------*
+*& Form read_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM read_data .
+    SELECT matnr ean11 INTO CORRESPONDING FIELDS OF TABLE t_mara FROM mara.
+
+    "Input the Data
+    PERFORM gui_upload TABLES t_tab USING p_file.
+
+    "Dealing with the Data just input
+    CLEAR: w_count, wa_tab.
+    LOOP AT t_tab INTO wa_tab.
+
+        "Header Data Handling
+        IF wa_tab+0(1) = 'M'.
+            w_count = w_count + 1.
+
+            CLEAR wa_main.
+            wa_main-docNumber = wa_tab-line+24(20).
+            wa_main-shipmentDate = wa_tab-line+85(8).
+            wa_main-recog = w_count.
+            APPEND wa_main TO t_main.
+
+        ENDIF.
+
+        "Detail Data Hamdling
+        IF wa_tab+0(1) = 'D'.
+            CLEAR wa_detail.
+            wa_detail-recog = w_count.
+
+            wa_detail-ean11 = wa_tab-line+1(14).
+            wa_detail-quantity = wa_tab-line+39(8).
+            wa_detail-netpr = wa_tab-line+63(10).
+
+            "RM Blank
+            CONDENSE wa_detail-quantity NO-GAPS.
+            CONDENSE wa_detail-netpr NO-GAPS.
+
+            "Change EAN to Material
+            CLEAR wa_mara.
+            READ TABLE t_mara INTO wa_mara WITH KEY ean11 = wa_detail-ean11.
+            wa_detail-material = wa_mara-matnr.
+
+            IF wa_detail-material IS NOT INITIAL.
+                APPEND wa_detail TO t_detail.
+            ELSE.
+                CLEAR wa_err.
+
+                CLEAR wa_main.
+                READ TABLE t_main INTO wa_main WITH KEY recog = wa_detail-recog.
+                wa_err-docNumber = wa_main-docNumber.
+                wa_err-shipmentDate = wa_main-shipmentDate.
+                wa_err-ean11 = wa_detail-ean11.
+                wa_err-message = TEXT-006.
+
+                APPEND wa_err TO t_err.
+            ENDIF.
+
+        ENDIF.
+
+    ENDLOOP.
+
+    "Delete the data which error occur.
+    CLEAR wa_err.
+    LOOP AT t_err INTO wa_err.
+        DELETE t_main WHERE docNumber = wa_err-docNumber.
+    ENDLOOP.
+
+    "Bapi data process
+    PERFORM process_data.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form process_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM process_data .
+    REFRESH: t_head, t_item, t_par, t_sch.
+
+    CLEAR wa_main.
+    LOOP AT t_main INTO wa_main.
+
+        "Before putting in Bapi
+        "Condition Control 6. point
+        REFRESH t_vbeln.
+        SELECT k~vbeln p~abgru INTO CORRESPONDING FIELDS OF TABLE t_vbeln FROM vbak AS k
+          JOIN vbkd AS d ON k~vbeln = d~vbeln
+          JOIN vbap AS p ON p~vbeln = k~vbeln
+          WHERE d~bstkd = wa_main-docNumber AND k~kunnr = p_kunnr .
+        DELETE t_vbeln WHERE abgru IS NOT INITIAL.
+
+        IF t_vbeln IS NOT INITIAL.
+            CLEAR wa_err.
+            wa_err-docNumber = wa_main-docNumber.
+            wa_err-shipmentDate = wa_main-shipmentDate.
+            wa_err-ean11 = wa_detail-ean11.
+            wa_err-message = TEXT-007.
+            APPEND wa_err TO t_err.
+            sy-subrc = 4.
+            CONTINUE.
+        ENDIF.
+
+
+        CLEAR wa_head.
+        wa_head-doc_type = p_auart.
+        wa_head-sales_org = p_vkorg.
+        wa_head-distr_chan = p_vtweg.
+        wa_head-doc_date = p_audat.
+        wa_head-division = p_spart.
+        wa_head-sales_off = p_vkbur.
+        wa_head-ship_cond = p_vsbed.
+        wa_head-purch_no_c = wa_main-docNumber.
+
+        CLEAR wa_par.
+        wa_par-partn_role = 'AG'.
+        wa_par-partn_numb = p_kunnr.
+        APPEND wa_par TO t_par.
+
+        CLEAR wa_par.
+        wa_par-partn_role = 'WE'.
+        wa_par-partn_numb = p_get.
+        APPEND wa_par TO t_par.
+
+        CLEAR: wa_detail, w_count.
+        LOOP AT t_detail INTO wa_detail WHERE recog = wa_main-recog.
+            w_count = w_count + 10.
+            CLEAR wa_item.
+            wa_item-itm_number = w_count.
+            wa_item-material = wa_detail-material.
+            wa_item-ean_upc = wa_detail-ean11.
+            wa_item-ship_point = p_vstel.
+            wa_item-plant = p_werks.
+            wa_item-store_loc = p_lgort.
+            IF wa_detail-netpr = '0'.
+                wa_item-item_categ = 'TANN'.
+            ENDIF.
+            APPEND wa_item TO t_item.
+
+            CLEAR wa_sch.
+            wa_sch-itm_number = w_count.
+            wa_sch-req_date = wa_main-shipmentDate.
+            wa_sch-req_qty = wa_detail-quantity.
+            APPEND wa_sch TO t_sch.
+
+            IF wa_detail-netpr <> '0'.
+                CLEAR wa_cond.
+                wa_cond-itm_number = w_count.
+                wa_cond-cond_type = 'PR01'.
+                wa_cond-cond_value = wa_detail-netpr.
+                wa_cond-cond_p_unt = '100'.
+                APPEND wa_cond TO t_cond.
+            ENDIF.
+
+        ENDLOOP.
+
+        "Use bapi to Create Order
+        PERFORM create_order.
+
+        CLEAR wa_return.
+        READ TABLE t_return INTO wa_return WITH KEY type = 'E'.
+        IF wa_return IS NOT INITIAL.
+            CLEAR wa_err.
+            wa_err-docNumber = wa_main-docNumber.
+            wa_err-shipmentDate = wa_main-shipmentDate.
+            wa_err-message = wa_return-message.
+            APPEND wa_err TO t_err.
+        ELSE.
+            COMMIT WORK AND WAIT.
+            CLEAR wa_suc.
+            wa_suc-docNumber = wa_main-docNumber.
+            wa_suc-vbeln = l_vbeln.
+            APPEND wa_suc TO t_suc.
+        ENDIF.
+
+    ENDLOOP.
+
+    IF sy-subrc <> 0.
+        REFRESH t_suc[].
+    ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form create_order
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM create_order .
+
+    REFRESH t_return.
+
+    CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2'
+      EXPORTING
+        order_header_in = wa_head
+      IMPORTING
+        salesdocument = l_vbeln
+      TABLES
+        return = t_return
+        order_items_in = t_item
+        order_partners = t_par
+        order_schedules_in = t_sch
+        order_conditions_in = t_cond
+      EXCEPTIONS
+        OTHERS = 4.
+
+    IF sy-subrc <> 0.
+        ROLLBACK WORK.
+    ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form rm_txt
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM rm_txt USING l_value l_target.
+    DATA l_string TYPE string.
+    CLEAR l_string.
+    l_string = l_value.
+
+    CONDENSE l_string NO-GAPS.
+    SHIFT l_string RIGHT DELETING TRAILING 't'.
+    SHIFT l_string RIGHT DELETING TRAILING 'x'.
+    SHIFT l_string RIGHT DELETING TRAILING 't'.
+    SHIFT l_string RIGHT DELETING TRAILING '.'.
+
+    l_target = l_string.
+
+ENDFORM.
