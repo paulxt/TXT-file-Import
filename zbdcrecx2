@@ -1,0 +1,255 @@
+***INCLUDE BDCRECX1.
+*  for programs doing a data transfer by creating a batch-input session
+*  and
+*  for programs doing a data transfer by CALL TRANSACTION USING
+
+*----------------------------------------------------------------------*
+*   data definition
+*----------------------------------------------------------------------*
+*       Batchinputdata of single transaction
+DATA:   bdcdata LIKE bdcdata    OCCURS 0 WITH HEADER LINE.
+*       messages of call transaction
+DATA:   messtab LIKE bdcmsgcoll OCCURS 0 WITH HEADER LINE.
+*       message texts
+DATA:   w_subrc LIKE sy-subrc.
+TABLES: t100.
+DATA : w_success TYPE i,
+       w_error   TYPE i,
+       w_total   TYPE i.
+
+*----------------------------------------------------------------------*
+*        Start new transaction according to parameters                 *
+*----------------------------------------------------------------------*
+FORM bdc_transaction USING tcode count p_mode.
+    DATA: l_mstring(480).
+    DATA: l_subrc LIKE sy-subrc.
+    DATA: w_options LIKE ctu_params.
+
+    w_options-dismode = p_mode.
+    w_options-updmode = 'A'.
+    w_options-defsize = 'X'.
+
+    REFRESH messtab.
+    CLEAR : w_subrc.
+    CALL TRANSACTION tcode USING bdcdata
+                     OPTIONS FROM w_options
+                     MESSAGES INTO messtab.
+    l_subrc = sy-subrc.
+    w_subrc = l_subrc.
+*    IF SMALLLOG <> 'X'.
+    WRITE: / 'CALL_TRANSACTION',
+             tcode,
+             'returncode:'(I05),
+             l_subrc,
+             'RECORD:',
+             count.
+    LOOP AT messtab.
+        SELECT SINGLE * FROM t100 WHERE sprsl = messtab-msgspra
+                                  AND   arbgb = messtab-msgid
+                                  AND   msgnr = messtab-msgnr.
+        IF sy-subrc IS INITIAL.
+            l_mstring = t100-text.
+            IF l_mstring CS '&1'.
+                REPLACE '&1' WITH messtab-msgv1 INTO l_mstring.
+                REPLACE '&2' WITH messtab-msgv2 INTO l_mstring.
+                REPLACE '&3' WITH messtab-msgv3 INTO l_mstring.
+                REPLACE '&4' WITH messtab-msgv4 INTO l_mstring.
+            ELSE.
+                REPLACE '&' WITH messtab-msgv1 INTO l_mstring.
+                REPLACE '&' WITH messtab-msgv2 INTO l_mstring.
+                REPLACE '&' WITH messtab-msgv3 INTO l_mstring.
+                REPLACE '&' WITH messtab-msgv4 INTO l_mstring.
+            ENDIF.
+            CONDENSE l_mstring.
+            WRITE: / messtab-msgtyp, l_mstring(250).
+        ELSE.
+            WRITE: / messtab.
+        ENDIF.
+    ENDLOOP.
+    SKIP.
+*      ENDIF.
+    REFRESH bdcdata.
+ENDFORM.
+*----------------------------------------------------------------------*
+*        Start new screen                                              *
+*----------------------------------------------------------------------*
+FORM bdc_dynpro USING program dynpro.
+    CLEAR bdcdata.
+    bdcdata-program  = program.
+    bdcdata-dynpro   = dynpro.
+    bdcdata-dynbegin = 'X'.
+    APPEND bdcdata.
+ENDFORM.
+*----------------------------------------------------------------------*
+*        Insert field                                                  *
+*----------------------------------------------------------------------*
+FORM bdc_field USING fnam fval.
+*   IF FVAL <> NODATA.
+    CLEAR bdcdata.
+    bdcdata-fnam = fnam.
+    bdcdata-fval = fval.
+    APPEND bdcdata.
+*   ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  F4_FILENAME
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM f4_filename USING p_name.
+    CALL FUNCTION 'F4_FILENAME'
+*      EXPORTING
+*       PROGRAM_NAME        = SYST-CPROG
+*       DYNPRO_NUMBER       = SYST-DYNNR
+*       FIELD_NAME          =
+      IMPORTING
+        file_name           = p_name.
+ENDFORM.                    " F4_FILENAME
+*&---------------------------------------------------------------------*
+*&      Form  GUI_UPLOAD
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM gui_upload TABLES t_tab
+                USING p_name.
+    DATA: filename TYPE string.
+
+    filename = p_name.
+    CALL FUNCTION 'GUI_UPLOAD'
+      EXPORTING
+        filename                      = filename
+        filetype                      = 'ASC'
+        has_field_separator           = 'X'
+      TABLES
+        data_tab                      = t_tab
+      EXCEPTIONS
+        file_open_error               = 1
+        file_read_error               = 2
+        no_batch                      = 3
+        gui_refuse_filetransfer       = 4
+        invalid_type                  = 5
+        no_authority                  = 6
+        unknown_error                 = 7
+        bad_data_format               = 8
+        header_not_allowed            = 9
+        separator_not_allowed         = 10
+        header_too_long               = 11
+        unknown_dp_error              = 12
+        access_denied                 = 13
+        dp_out_of_memory              = 14
+        disk_full                     = 15
+        dp_timeout                    = 16
+        OTHERS                        = 17
+            .
+    IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+ENDFORM.                    " GUI_UPLOAD
+*&---------------------------------------------------------------------*
+*&      Form  GUI_DOWNLOAD
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM gui_download  TABLES t_tab
+                   USING p_name.
+    DATA: filename TYPE string.
+
+    filename = p_name.
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename                      = filename
+        filetype                      = 'ASC'
+        write_field_separator         = 'X'
+      TABLES
+        data_tab                      = t_tab
+      EXCEPTIONS
+        file_write_error              = 1
+        no_batch                      = 2
+        gui_refuse_filetransfer       = 3
+        invalid_type                  = 4
+        no_authority                  = 5
+        unknown_error                 = 6
+        header_not_allowed            = 7
+        separator_not_allowed         = 8
+        filesize_not_allowed          = 9
+        header_too_long               = 10
+        dp_error_create               = 11
+        dp_error_send                 = 12
+        dp_error_write                = 13
+        unknown_dp_error              = 14
+        access_denied                 = 15
+        dp_out_of_memory              = 16
+        disk_full                     = 17
+        dp_timeout                    = 18
+        file_not_found                = 19
+        dataprovider_exception        = 20
+        control_flush_error           = 21
+        OTHERS                        = 22
+                .
+    IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+
+ENDFORM.                    " GUI_DOWNLOAD
+*&---------------------------------------------------------------------*
+*&      Form  GUI_DOWNLOAD_UTF8
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM gui_download_utf8  TABLES t_tab
+                   USING p_name.
+    DATA: filename TYPE string.
+
+    filename = p_name.
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename                      = filename
+        filetype                      = 'DAT'
+        write_field_separator         = 'X'
+        codepage                        = '4110'
+      TABLES
+        data_tab                      = t_tab
+      EXCEPTIONS
+        file_write_error              = 1
+        no_batch                      = 2
+        gui_refuse_filetransfer       = 3
+        invalid_type                  = 4
+        no_authority                  = 5
+        unknown_error                 = 6
+        header_not_allowed            = 7
+        separator_not_allowed         = 8
+        filesize_not_allowed          = 9
+        header_too_long               = 10
+        dp_error_create               = 11
+        dp_error_send                 = 12
+        dp_error_write                = 13
+        unknown_dp_error              = 14
+        access_denied                 = 15
+        dp_out_of_memory              = 16
+        disk_full                     = 17
+        dp_timeout                    = 18
+        file_not_found                = 19
+        dataprovider_exception        = 20
+        control_flush_error           = 21
+        OTHERS                        = 22
+                .
+    IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+
+ENDFORM.                    " GUI_DOWNLOAD_UTF8
